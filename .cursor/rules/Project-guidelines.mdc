@@ -1,0 +1,313 @@
+---
+alwaysApply: true
+description: "4Ti Hackathon Project: Prior-Auth Orchestrator — Portia-driven, sandboxed end-to-end automation demo"
+---
+
+## Project: Prior-Auth Orchestrator (Sandboxed)
+
+- **Problem**: Prior authorization (PA) delays care and burdens clinics. Processes vary by payer and channel (portal, phone, fax). We demo an end-to-end, safe, sandboxed PA flow that shows real agentic planning, authenticated tool use, clarifications, browser automation, and an auditable trail.
+- **Goal**: For PT clinics, from a scanned paper intake form + payer/member info, the agent performs OCR to extract fields, validates and requests missing items, then performs a simulated phone/IVR eligibility + prior-authorization check. If an authorization is issued, capture auth number, approved visits, and validity dates; persist all results to a lightweight ERP with a full audit trail. No PHI; synthetic data only.
+- **Why this**: Aligns with current agentic trends and YC-backed efforts while being hackathon-feasible and Portia-heavy. See background: [Portia.mdc](mdc:.cursor/.rules/Portia.mdc).
+
+## Product Requirements (PRD)
+
+### Objective
+Deliver a sandboxed, end-to-end, PT clinic prior-authorization assistant that turns a scanned intake into an eligibility/auth determination and saves an auditable record to a lightweight ERP, with clear human approvals and no PHI.
+
+### In Scope (MVP)
+- Intake from scanned paper (image/PDF) and optional one supporting PDF.
+- OCR/normalization of PT fields (patient, payer/plan, memberId, DOB, CPTs limited to PT, optional ICD-10, visits requested, provider/site).
+- Typed clarifications for missing/ambiguous fields.
+- Simulated phone/IVR for eligibility and auth requirement; simulated pre-cert decision if required.
+- Reviewer approval gate before saving.
+- Persistence to SQLite “ERP” (AuthorizationRecord + benefits + transcript) and full audit events.
+- Minimal metrics view (time-to-auth, OCR accuracy proxy, missing-field catch rate).
+
+### Out of Scope (MVP)
+- Real payer integrations (EDI 270/271/278/275), real IVR calling, real EHR connectivity, PHI handling.
+
+### Users and Roles
+- IntakeSpecialist: upload intake, resolve clarifications, initiate call.
+- Reviewer: approve eligibility/auth outcome before save.
+- Admin: read-only metrics/audit.
+
+### Assumptions
+- Synthetic sample forms; standardized PT CPT codes (e.g., 97161, 97110) and defaults are acceptable for demo.
+- Deterministic IVR rules acceptable and disclosed in UI/audit.
+
+### Functional Requirements
+1) Upload and OCR
+   - Accept image/PDF; extract required PT fields; show extracted vs missing.
+2) Clarifications
+   - Typed prompts for memberId, DOB, plan/group, subscriber, CPTs, visits requested.
+3) Eligibility + Auth Check (Mock IVR)
+   - Collect memberId/DOB; return coverage dates, copay/coins, PT visit limits/used.
+   - Compute authRequired per demo rules; if required, produce authNumber, visitsApproved, validity window.
+4) Review + Approve
+   - Present consolidated view; require reviewer approval to proceed.
+5) Save to ERP (SQLite)
+   - Store AuthorizationRecord, EligibilityResult, CallTranscript; expose simple status list/detail.
+6) Audit Trail
+   - Emit events for create → ocrExtracted → clarified → eligibilityChecked → authObtained/waived → saved.
+7) Notifications (optional)
+   - Draft on-screen recap; optional email draft (no send required).
+
+### Non-Functional Requirements
+- Security: synthetic data only; mask any accidental identifiers; do not transmit externally.
+- Reliability: resumable PlanRun; idempotent save; handle IVR step retries.
+- Observability: structured logs; audit with actorRole and rationale on overrides.
+- Performance: demo run completes in < 5 minutes end-to-end on sample data.
+
+### KPIs (demo)
+- Time-to-auth (or determination), missing-field catch rate, straight-through rate (no reviewer edits), OCR extraction accuracy proxy (auto vs corrected fields).
+
+### Risks and Mitigations
+- Payer rule complexity → deterministic IVR rules and clear disclosure.
+- OCR inaccuracies → typed clarifications and reviewer gate.
+- Scope creep → PT-only, one payer rule, one IVR flow.
+
+### Success Criteria
+- Golden path completes with an authNumber and saved record; audit shows each step with timestamps; KPIs visible; reviewer gate enforced.
+
+### Stretch Goals
+- Real voice call to mock IVR; attach plan-of-care PDF; simple appeals draft if denied.
+
+### Demo Script (concise)
+1) Upload scanned PT intake → extracted fields + clarifications.
+2) Start mock IVR → enter memberId/DOB → benefits summary → auth required → pre-cert result.
+3) Reviewer approves → save to ERP → show audit and metrics.
+
+## MVP Scope (simplified, single-flow for PT clinics)
+
+1) Single Intake (scanned PT paper form)
+   - Upload: scanned image/PDF of standard PT intake/face sheet.
+   - Extract via OCR: patient demographics, payer, plan/group, memberId, dob, subscriber, referring provider, siteOfCare.
+   - PT coding: optional icd10Code (e.g., M54.50), planned cptCodes limited to PT (e.g., 97161 eval, 97110 exercise), visitsRequested.
+   - Validate presence; flag missing/ambiguous via typed clarifications.
+
+2) Eligibility & Auth Requirement Check (phone/IVR simulation)
+   - Use a hosted mock IVR "payer phone" app to simulate dialing menus.
+   - Enter memberId/DOB; retrieve PT benefits summary (coverage dates, copay/coinsurance, visit limits).
+   - Determine if prior auth is required for PT; if required, simulate pre-cert to obtain authNumber, visitsApproved, validity window.
+
+3) Review & Finalize
+   - Display extracted fields and eligibility/auth results; reviewer must approve.
+   - Optionally attach a single supporting PDF (e.g., plan of care) to the record.
+
+4) Persistence & Notifications
+   - Persist AuthorizationRecord to a lightweight SQLite "ERP" store (request, benefits, authNumber, visitsApproved, validity, call transcript).
+   - Optional: send a status recap to staff (e.g., on-screen and/or email draft).
+
+5) Audit Trail
+   - Emit AuditEvents for create → OCR-extracted → clarified → eligibilityChecked → authObtained/waived → saved; display in UI.
+
+Out of Scope for MVP
+- Real payer integrations, real IVR calling, EHR integration, and PHI. All data is synthetic; phone flow is simulated via a mock IVR web app.
+
+## Architecture
+
+- Backend: FastAPI service exposing endpoints to create/run/resume a PlanRun, serve demo UI, and host the mock IVR (payer phone) web app.
+- Agent Orchestration: Portia SDK plan → `PlanRun` with resumable steps, approvals, and clarifications.
+- UI: Minimal Next.js single-page app for intake, approvals, and run/audit viewing.
+- Storage: Portia Cloud (optional) for run history; Google Drive for docs/artifacts; local DB (SQLite) for demo state.
+
+## Portia Tools & Capabilities
+
+- OCR/Extract: parse scanned paper intake (image/PDF) to structured fields.
+- LLM: normalize fields, detect missing/ambiguous data, generate concise rationale if needed.
+- Phone/IVR simulation: navigate mock IVR menus, accept DTMF inputs, produce benefits/auth outcomes.
+- Clarifications: typed requests for missing inputs and final reviewer approval.
+- Authentication: JIT auth for any hosted tools; no PHI in demo.
+
+## Data Model (conceptual)
+
+- `PTIntake`: patient, payer, planName, groupNumber, memberId, dob, subscriber, referringProvider, siteOfCare, cptCodes[], icd10Code?, visitsRequested.
+- `EligibilityResult`: coverageStart, coverageEnd, copayOrCoins, ptVisitLimit, ptVisitsUsed?, authRequired (boolean).
+- `AuthorizationRecord`: authRequired, authNumber?, visitsApproved?, validFrom?, validTo?, notes.
+- `CallTranscript`: steps[], dtmfEntered[], outcomeSummary.
+- `AuditRecord`: plan, approvals, field diffs, extracted vs final values, links to artifacts.
+
+## Clarifications (examples)
+
+- Missing demographics: "Please confirm DOB and member ID"
+- Missing insurance: "Provide plan/group number and subscriber name"
+- Coding: "Confirm planned CPTs (default 97161 eval, 97110 exercise) and visits requested"
+- Approval: "Approve eligibility/auth results and save to ERP?"
+
+## Demo Flow (Golden Path)
+
+1) Upload scanned PT intake form (image/PDF) → OCR extracts fields; show diffs and missing fields.
+2) Collect clarifications for required fields (memberId, DOB, plan/group, CPTs, visits requested).
+3) "Call payer" via mock IVR: enter memberId/DOB → receive PT benefits; if auth required, simulate pre-cert to return authNumber and visitsApproved.
+4) Reviewer approves results → save AuthorizationRecord + transcript to ERP; show status in UI.
+5) Audit events visible for each step; display concise summary.
+
+## Environment & Secrets
+
+- `OPENAI_API_KEY` (or `MISTRAL_API_KEY` / `GOOGLE_API_KEY`) for the LLM tool.
+- `PORTIA_API_KEY` (optional) for Portia Cloud.
+- Google OAuth via JIT authentication for Docs/Drive/Gmail.
+
+## Safety & Compliance
+
+- No PHI; only synthetic data.
+- Clear banner: "Demo only. Not medical advice. Not connected to real payers/EHRs."
+- All destructive actions gated by explicit approvals.
+
+## 2-Day Plan
+
+- Day 1: Scaffold backend/UI; OCR pipeline for scanned PT form; clarifications; mock IVR flow; SQLite store; audit events.
+- Day 2: Eligibility/auth logic; reviewer gate; ERP save + transcript; metrics and demo polish (time-to-auth, OCR accuracy, missing-field catch rate).
+
+## Process Validation (PT prior auth reality check)
+
+- Industry pattern aligns with our flow:
+  - OCR/IDP from fax/paper to populate PA fields (e.g., PT-focused EMRs and IDP vendors).
+  - Verify eligibility/benefits first (270/271, portal, or IVR) to determine PT visit limits and whether PA is required.
+  - If PA is required, submit to UM vendors/portals (eviCore/AIM/NIA/Carelon) or ePA rails; track status; handle appeals if denied.
+- Our demo is realistic but sandboxed:
+  - Eligibility and PA requirement are simulated via a mock IVR with deterministic rules.
+  - UM decision (auth issued) is simulated; clearly labeled as such in the UI and audit log.
+  - No PHI; de-identified, synthetic samples only.
+
+References (representative): PT intake automation and PA workflows in the market (e.g., Infinx prior auth automation; Practice Pro fax/OCR automation; Treatline IDP; Cohere care-path capture; YC companies Tivara/Fairway/Intelliga tackling PA/appeals). See background links in References.
+
+## PT Intake: Required Fields (demo baseline)
+
+- Patient: firstName, lastName, dob
+- Insurance: payerName, planName, groupNumber?, memberId, subscriberName
+- Clinical: icd10Code (default M25.561 knee pain), cptCodes (default [97161, 97110]), visitsRequested (default 8)
+- Provider/Site: referringProviderName, referringProviderNpi, siteOfCare
+
+## Mock IVR State Machine (demo)
+
+- start → mainMenu
+  - 1: Eligibility and benefits → collectMemberId → collectDob → benefitsSummary
+  - 2: Prior authorization (PT) → collectMemberId → collectDob → checkAuthRequirement → precert (if required) → authResult
+  - 9: Repeat menu; 0: End call
+- benefitsSummary: returns coverageStart, coverageEnd, copayOrCoins, ptVisitLimit, ptVisitsUsed
+- checkAuthRequirement: returns authRequired boolean per demo rules
+- precert (if required): returns authNumber, visitsApproved, validFrom, validTo
+- The transcript records prompts, DTMF entries, and returned summaries/results
+
+## Demo Decision Rules (deterministic)
+
+- PT visit limit: 12 per benefit year; ptVisitsUsed = 2 for sample member
+- Auth requirement: authRequired = true if visitsRequested > 6; otherwise false
+- Visits approved: visitsApproved = min(6, ptVisitLimit - ptVisitsUsed, visitsRequested)
+- Validity: validFrom = today; validTo = today + 60 days
+- Copay/coinsurance: example 20% coinsurance or $25 copay per visit (configurable)
+
+
+## References (background)
+
+- Portia overview and tools: https://www.portialabs.ai/ and https://docs.portialabs.ai/?utm_source=openai
+- YC trend: agentic AI emphasis: https://economictimes.indiatimes.com/tech/artificial-intelligence/y-combinators-spring-2025-batch-features-70-startups-focused-on-agentic-ai/articleshow/121860763.cms?utm_source=openai
+- Prior-auth automation context: Tivara, Fairway Health, Intelliga Health (YC launches):
+  - https://www.ycombinator.com/launches/LTm-tivara-automating-insurance-approval-workflows-for-doctors?utm_source=openai
+  - https://www.ycombinator.com/launches/IIu-fairway-health-process-prior-authorization-faster?utm_source=openai
+  - https://www.ycombinator.com/launches/ItA-intelliga-health-automating-insurance-workflows-for-medical-practices?utm_source=openai
+
+
+## Flow Diagram (PT prior-auth demo)
+
+```mermaid
+flowchart LR
+  A["Patient provides scanned PT intake (image/PDF)"] --> B["OCR: extract demographics, payer/plan, memberId, DOB,<br/>subscriber, referring provider, siteOfCare, CPTs, ICD-10, visitsRequested"]
+  B --> C{"Missing or ambiguous fields?"}
+  C -- "Yes" --> D["Clarifications: request DOB, memberId, plan/group, CPTs, visits"]
+  D --> B
+  C -- "No" --> E["Simulated phone/IVR call to payer"]
+
+  subgraph IVR["Mock IVR (eligibility + prior auth)"]
+    E --> F["Enter memberId + DOB (DTMF)"]
+    F --> G["Benefits summary: coverageStart/End, copay/coins,<br/>PT visitLimit/used"]
+    G --> H{"Auth required for PT?"}
+    H -- "Yes" --> I["Pre-cert: return authNumber, visitsApproved,<br/>validFrom → validTo"]
+    H -- "No" --> J["Auth waived"]
+  end
+
+  I --> K["EligibilityResult + Authorization outcome"]
+  J --> K
+  K --> L["Reviewer approval (human-in-the-loop)"]
+  L --> M["Persist to ERP (SQLite): AuthorizationRecord + benefits + call transcript"]
+  M --> N["Optional notifications: on-screen recap and/or email draft"]
+  N --> O["Done"]
+
+  P["Audit trail (events)"]
+  A -. "create" .-> P
+  B -. "ocrExtracted" .-> P
+  D -. "clarified" .-> P
+  G -. "eligibilityChecked" .-> P
+  I -. "authObtained" .-> P
+  J -. "authWaived" .-> P
+  M -. "saved" .-> P
+
+  R["Demo rules (deterministic):<br/>visitLimit=12, visitsUsed=2;<br/>authRequired if visitsRequested>6;<br/>visitsApproved=min(6, limit-used, requested);
+  validity=60 days"]
+  G -. "applied" .-> R
+```
+
+## Technical Documentation (automation, Azure OpenAI GPT-5 OCR, Portia)
+
+### Overview
+- Scope: PT clinics only. End-to-end automation (no human review). Synthetic data; sandboxed IVR; SQLite ERP.
+- Flow: Upload scanned intake → OCR (Azure OpenAI GPT-5) → normalize/auto-defaults → mock IVR eligibility + auth → compute outcome → persist to ERP with audit → status API.
+
+### Architecture
+- API service (FastAPI)
+  - Endpoints to upload intake, kick off/track a PlanRun, fetch results and audit.
+  - Hosts Mock IVR (HTTP state machine) and serves artifacts (transcript, audit JSON).
+- Agent orchestration (Portia SDK)
+  - Plan → PlanRun executes tools (OCR, IVR, rules, persistence) straight-through.
+  - Clarifications disabled/auto-resolved by defaults; no human gates.
+- OCR engine
+  - Primary: Azure OpenAI GPT-5 multimodal via Chat Completions (image→JSON).
+  - Fallback: Tesseract (OpenCV preprocess) if GPT-5 unavailable.
+- Persistence
+  - SQLite tables for PTIntake, EligibilityResult, AuthorizationRecord, CallTranscript, AuditEvent; files under uploads/.
+- Observability
+  - Structured JSON logs, audit events, optional Prometheus metrics.
+
+### Execution flow (automated)
+1) Intake upload: store file; create PTIntake status=created.
+2) OCR+normalize: GPT-5 extracts fields (patient, payer, plan/group?, memberId, DOB, subscriber, referring provider/NPI, site, PT CPTs, ICD‑10, visitsRequested). Apply defaults (CPTs [97161, 97110], ICD‑10 M25.561, visitsRequested=8) if missing.
+3) Eligibility/auth (mock IVR): service-to-service call with memberId/DOB; return coverage, copay/coins, visitLimit/used; decide authRequired; if required, simulate pre-cert → authNumber, visitsApproved, validity.
+4) Persist+finalize: write EligibilityResult, AuthorizationRecord, CallTranscript; emit AuditEvents; expose status/result.
+
+### Portia usage
+- Configure Azure OpenAI as LLM provider; define a Plan with explicit step I/O; run as a single PlanRun.
+- Avoid interactive clarifications; code supplies deterministic defaults.
+- References: Portia docs (install, plan/plan-run, tools, clarifications).
+
+### Azure OpenAI GPT‑5 OCR (Chat Completions)
+- Env: AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_DEPLOYMENT.
+- Prompt instructs strict JSON schema for extraction; send image as content; temperature=0; validate JSON.
+- Fallback: OpenCV+Tesseract → regex/LLM normalization.
+
+### APIs (FastAPI)
+- POST /api/intake (multipart) → {intakeId}
+- POST /api/intake/{id}/run → start end-to-end PlanRun → {runId}
+- GET /api/intake/{id} → intake + eligibility + authorization + audit + transcript
+- GET /api/run/{runId} → plan-run state/outputs
+- GET /api/audit/{entity}/{id}
+- GET /health | /metrics
+
+### Data model (SQLite)
+- pt_intake(id, created_at, updated_at, patient_first, patient_last, dob, payer_name, plan_name, group_number, member_id, subscriber_name, referring_provider_name, referring_provider_npi, site_of_care, cpt_codes_json, icd10_code, visits_requested)
+- eligibility_result(id, intake_id, coverage_start, coverage_end, copay_or_coins, pt_visit_limit, pt_visits_used, auth_required)
+- authorization_record(id, intake_id, auth_required, auth_number, visits_approved, valid_from, valid_to, notes)
+- call_transcript(id, intake_id, steps_json, dtmf_json, outcome_summary)
+- audit_event(id, entity_type, entity_id, action, actor_role, timestamp, before_json, after_json)
+
+### Mock IVR (HTTP state machine)
+- Routes: POST /ivr/start → {sessionId}; POST /ivr/{sessionId}/dtmf; GET /ivr/{sessionId}/result.
+- States: Eligibility (collect memberId→DOB→benefits); PA check (if visitsRequested>6 → precert → auth result).
+- Demo rules: visitLimit=12; visitsUsed=2; authRequired=(visitsRequested>6); visitsApproved=min(6, limit-used, requested); validity=60 days.
+
+### Deployment (DigitalOcean droplet)
+- Docker Compose: backend (FastAPI+Portia+Azure client), optional proxy (Caddy), volumes: ./data (SQLite), ./uploads.
+- Steps: install Docker; set .env (AZURE_OPENAI_* , PORTIA_API_KEY); docker compose build && up -d; route domain to proxy; TLS via Caddy.
+
+### Testing
+- Seed synthetic intakes; verify OCR/defaults; validate IVR outcomes; confirm persisted AuthorizationRecord and AuditEvents; E2E <5 min.
