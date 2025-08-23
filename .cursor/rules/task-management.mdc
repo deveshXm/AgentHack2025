@@ -1,5 +1,167 @@
 ---
-description:
-globs:
-alwaysApply: false
+alwaysApply: true
+---
+# Task Management Plan — PT Prior-Auth Orchestrator (Hackathon)
+
+Scope flags
+- Local-only; no deployment code
+- Azure OpenAI GPT-5 for OCR (chat completions, multimodal)
+- Portia plan runs straight-through (no human review)
+- Twilio voice required (Media Streams + OpenAI Realtime)
+- MongoDB via env-provided URI
+- Synthetic data; PT clinics only
+
+Environment prerequisites
+- AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_DEPLOYMENT
+- OPENAI_API_KEY (Realtime)
+- TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_NUMBER, PUBLIC_WSS_URL
+- MONGODB_URI, MONGODB_DB (e.g., pa_demo)
+
+Workstreams & checklist
+
+1) Backend scaffolding (FastAPI)
+- [ ] Create `app/main.py`, `config.py`, `deps.py`
+- [ ] Routes: `intake.py`, `ivr.py`, `voice.py`, `audit.py`, `health.py`
+- [ ] JSON logging util with request/run correlation IDs
+
+2) Mongo persistence (motor)
+- [ ] `dao/mongo.py` client + init
+- [ ] Collections: `pt_intakes`, `eligibility_results`, `authorization_records`, `call_transcripts`, `audit_events`
+- [ ] Basic indexes (createdAt, status, intakeId)
+
+3) OCR service (Azure GPT-5)
+- [ ] `services/ocr_service.py` → image/PDF page(s) to strict JSON schema
+- [ ] Normalization & deterministic defaults (CPTs [97161, 97110], ICD-10 M25.561, visits=8)
+- [ ] Optional Tesseract fallback (only if needed)
+
+4) IVR mock (HTTP state machine)
+- [ ] `services/ivr_service.py` rules: visitLimit=12, used=2, auth if visits>6, visitsApproved=min(6, limit-used, requested), validity=60d
+- [ ] Transcript recorder; `routes/ivr.py` start/dtmf/result
+
+5) Portia plan/run (straight-through)
+- [ ] `services/portia_plan.py` steps: ocrExtract → normalizeDefaults → ivrEligibility → ivrAuthDecision → persistResults → finalize
+- [ ] Emit `audit_events` at each transition
+
+6) Voice/Twilio integration
+- [ ] `routes/voice.py` TwiML: `<Start><Stream url="wss://PUBLIC_WSS_URL/twilio-media">`
+- [ ] `services/voice_bridge.py` WSS endpoint bridging Twilio Media Streams ↔ OpenAI Realtime
+- [ ] Tool hook: assistant calls IVR service endpoints for benefits/auth
+- [ ] Local test via ngrok/Cloudflare Tunnel (document steps in README)
+
+7) Frontend (Next.js 14, minimal)
+- [ ] `app/page.tsx` upload → redirect to `/intake/[id]`
+- [ ] `app/intake/[id]/page.tsx` run button + SWR polling for results
+- [ ] Components: `UploadForm`, `IntakeSummary`, `EligibilityCard`, `AuthorizationCard`, `AuditTimeline`
+- [ ] `.env.local`: `NEXT_PUBLIC_BACKEND_BASE_URL`
+
+8) Sample data & scripts
+- [ ] Place 2–3 synthetic scanned PT intake PDFs/images under `sample_data/intakes/`
+- [ ] `scripts/seed.py` to create a couple of PTIntake stubs
+- [ ] `docs/api.http` example calls
+
+9) Testing (lean)
+- [ ] Unit: OCR field extraction; IVR rule edge cases (visits {0,6,7,20})
+- [ ] E2E: upload → run → verify Mongo records + audit sequence (<5 min)
+
+10) Documentation
+- [ ] README quickstart (env, run, test)
+- [ ] Export OpenAPI to `docs/openapi.json` (optional)
+
+Definition of Done
+- Upload a sample → run completes end-to-end → returns eligibility/auth; Mongo has `eligibility_results`, `authorization_records`, `call_transcripts`; audit timeline present; basic frontend shows summary.
+
+Notes
+- Keep services thin and pure; avoid overengineering (no complex DI, no ORMs).
+- Fail fast with clear JSON errors; include `runId` for traceability.
+
+## Folder Structure (local-only, minimal)
+
+```text
+AgentHack 2025/
+  backend/
+    app/
+      main.py
+      config.py
+      deps.py
+      routes/
+        intake.py
+        ivr.py
+        voice.py
+        audit.py
+        health.py
+        __init__.py
+      services/
+        ocr_service.py
+        portia_plan.py
+        ivr_service.py
+        voice_bridge.py
+        erp_service.py
+        audit_service.py
+      models/
+        schemas.py
+        dto.py
+      dao/
+        mongo.py
+        pt_intakes.py
+        eligibility_results.py
+        authorization_records.py
+        call_transcripts.py
+        audit_events.py
+      utils/
+        logging.py
+        ocr_preprocess.py
+    tests/
+      test_ocr_extraction.py
+      test_ivr_rules.py
+      test_plan_run_e2e.py
+      test_voice_glue.py
+    requirements.txt
+    .env.example
+  frontend/
+    app/
+      layout.tsx
+      page.tsx
+      intake/
+        [id]/
+          page.tsx
+      audit/
+        [entity]/
+          [id]/
+            page.tsx
+    components/
+      UploadForm.tsx
+      IntakeSummary.tsx
+      EligibilityCard.tsx
+      AuthorizationCard.tsx
+      AuditTimeline.tsx
+      Spinner.tsx
+    lib/
+      api.ts
+      config.ts
+      swr.ts
+    types/
+      api.ts
+    public/
+    styles/
+      globals.css
+    .env.local.example
+    package.json
+    tsconfig.json
+    next.config.js
+    postcss.config.js
+    tailwind.config.js
+  docs/
+    api.http
+    openapi.json
+    sample_intake.md
+  sample_data/
+    intakes/
+  scripts/
+    dev.sh
+    seed.py
+  .gitignore
+  README.md
+```
+---
+alwaysApply: true
 ---
