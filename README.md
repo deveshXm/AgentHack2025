@@ -1,8 +1,8 @@
 # 🚧 Construction Site Safety Compliance Agent
 ## AgentHack 2025
 
-![AI Safety Assistant Dashboard](images/app.png)
-*AI-powered construction safety inspector that analyzes site photos for OSHA violations using GPT-5-mini vision, preventing costly fines through automated compliance monitoring*
+[![Demo Video](https://img.youtube.com/vi/2Ne7SkmTPf4/0.jpg)](https://youtu.be/2Ne7SkmTPf4)
+*Watch the 2-minute demo video showcasing the AI Safety Assistant in action*
 
 ---
 
@@ -92,6 +92,13 @@ An intelligent safety assistant that **prevents violations before they happen** 
 - **Drag & drop image analysis** in seconds
 - **Conversational AI assistant** for guidance
 - **Automated Gmail reports** to stakeholders
+
+---
+
+## 🎯 See It In Action
+
+![AI Safety Assistant Dashboard](images/app.png)
+*AI-powered construction safety inspector that analyzes site photos for OSHA violations using GPT-5-mini vision, preventing costly fines through automated compliance monitoring*
 
 ---
 
