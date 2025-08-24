@@ -188,7 +188,7 @@ export function ChatInterface({ messages, onSendMessage, isLoading = false }: Ch
     <>
       <div 
         {...getRootProps()} 
-        className={`bg-white rounded-lg shadow-sm border h-[1200px] flex flex-col ${
+        className={`bg-white rounded-lg shadow-sm border h-[90vh] max-h-[900px] flex flex-col ${
           isDragActive ? 'border-blue-400 bg-blue-50' : ''
         }`}
       >
