@@ -2,7 +2,7 @@
 ## AgentHack 2025
 
 ![AI Safety Assistant Dashboard](images/app.png)
-*The professional AI Safety Assistant dashboard with drag-and-drop image analysis capabilities*
+*AI-powered construction safety inspector that analyzes site photos for OSHA violations using GPT-5-mini vision, preventing costly fines through automated compliance monitoring*
 
 ---
 
@@ -217,7 +217,7 @@ graph TD
 ## 📋 Sample Report Output
 
 ![Safety Compliance Report](images/report.png)
-*Complete safety compliance report generated after image analysis, showing detailed violations, financial impact, and corrective actions*
+*Professional OSHA compliance report with AI-detected violations, estimated fines, corrective actions, and automated email delivery to stakeholders via Portia SDK integration*
 
 ---
 
